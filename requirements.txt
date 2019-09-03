@@ -1,9 +1,5 @@
-numpy
-torch>=1.0
-torchvision
+torchvision==0.2.2
 matplotlib
 tensorflow
-tensorboard
 terminaltables
 pillow
-tqdm

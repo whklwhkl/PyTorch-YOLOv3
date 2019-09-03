@@ -16,10 +16,16 @@ import datetime
 import argparse
 
 import torch
+import torch.distributed as dist
+dist.init_process_group('nccl')
+torch.manual_seed(42)
+rank = dist.get_rank()
 from torch.utils.data import DataLoader
 from torchvision import datasets
+from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms
 from torch.autograd import Variable
+from torch.nn.parallel import DistributedDataParallel
 import torch.optim as optim
 
 if __name__ == "__main__":
@@ -62,9 +68,10 @@ if __name__ == "__main__":
             model.load_state_dict(torch.load(opt.pretrained_weights))
         else:
             model.load_darknet_weights(opt.pretrained_weights)
-
+    model = DistributedDataParallel(model)
     # Get dataloader
     dataset = ListDataset(train_path, augment=True, multiscale=opt.multiscale_training)
+    sampler = DistributedSampler(dataset)
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=opt.batch_size,
@@ -72,6 +79,7 @@ if __name__ == "__main__":
         num_workers=opt.n_cpu,
         pin_memory=True,
         collate_fn=dataset.collate_fn,
+        sampler=sampler
     )
 
     optimizer = torch.optim.Adam(model.parameters())
@@ -95,6 +103,7 @@ if __name__ == "__main__":
 
     for epoch in range(opt.epochs):
         model.train()
+        sampler.set_epoch(epoch)
         start_time = time.time()
         for batch_i, (_, imgs, targets) in enumerate(dataloader):
             batches_done = len(dataloader) * epoch + batch_i
@@ -113,7 +122,7 @@ if __name__ == "__main__":
             # ----------------
             #   Log progress
             # ----------------
-
+            if rank: continue
             log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(dataloader))
 
             metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers))]]]
@@ -146,7 +155,7 @@ if __name__ == "__main__":
             print(log_str)
 
             model.seen += imgs.size(0)
-
+        if rank: continue
         if epoch % opt.evaluation_interval == 0:
             print("\n---- Evaluating Model ----")
             # Evaluate the model on the validation set
@@ -175,4 +184,4 @@ if __name__ == "__main__":
             print(f"---- mAP {AP.mean()}")
 
         if epoch % opt.checkpoint_interval == 0:
-            torch.save(model.state_dict(), f"checkpoints/yolov3_ckpt_%d.pth" % epoch)
+            torch.save(model.module.state_dict(), f"checkpoints/yolov3_ckpt_%d.pth" % epoch)
