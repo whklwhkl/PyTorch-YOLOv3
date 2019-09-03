@@ -30,6 +30,7 @@ import torch.optim as optim
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
     parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
@@ -44,6 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--multiscale_training", default=True, help="allow for multi-scale training")
     opt = parser.parse_args()
     print(opt)
+    torch.cuda.set_device(opt.local_rank)
 
     logger = Logger("logs")
 
@@ -68,14 +70,14 @@ if __name__ == "__main__":
             model.load_state_dict(torch.load(opt.pretrained_weights))
         else:
             model.load_darknet_weights(opt.pretrained_weights)
-    model = DistributedDataParallel(model)
+    model = DistributedDataParallel(model, device_ids=[opt.local_rank], output_device=opt.local_rank)
     # Get dataloader
     dataset = ListDataset(train_path, augment=True, multiscale=opt.multiscale_training)
     sampler = DistributedSampler(dataset)
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=opt.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=opt.n_cpu,
         pin_memory=True,
         collate_fn=dataset.collate_fn,
@@ -106,6 +108,7 @@ if __name__ == "__main__":
         sampler.set_epoch(epoch)
         start_time = time.time()
         for batch_i, (_, imgs, targets) in enumerate(dataloader):
+            if os.path.exists('killme') == False:exit()
             batches_done = len(dataloader) * epoch + batch_i
 
             imgs = Variable(imgs.to(device))
@@ -125,19 +128,19 @@ if __name__ == "__main__":
             if rank: continue
             log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(dataloader))
 
-            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers))]]]
+            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.module.yolo_layers))]]]
 
             # Log metrics at each YOLO layer
             for i, metric in enumerate(metrics):
                 formats = {m: "%.6f" for m in metrics}
                 formats["grid_size"] = "%2d"
                 formats["cls_acc"] = "%.2f%%"
-                row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
+                row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.module.yolo_layers]
                 metric_table += [[metric, *row_metrics]]
 
                 # Tensorboard logging
                 tensorboard_log = []
-                for j, yolo in enumerate(model.yolo_layers):
+                for j, yolo in enumerate(model.module.yolo_layers):
                     for name, metric in yolo.metrics.items():
                         if name != "grid_size":
                             tensorboard_log += [(f"{name}_{j+1}", metric)]
@@ -154,13 +157,13 @@ if __name__ == "__main__":
 
             print(log_str)
 
-            model.seen += imgs.size(0)
+            model.module.seen += imgs.size(0)
         if rank: continue
         if epoch % opt.evaluation_interval == 0:
             print("\n---- Evaluating Model ----")
             # Evaluate the model on the validation set
             precision, recall, AP, f1, ap_class = evaluate(
-                model,
+                model.module,
                 path=valid_path,
                 iou_thres=0.5,
                 conf_thres=0.5,
