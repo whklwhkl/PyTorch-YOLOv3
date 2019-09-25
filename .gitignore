@@ -6,3 +6,5 @@ weights
 *.weights
 *.pyc
 logs/*
+*.tar.gz
+*.png
