@@ -50,7 +50,7 @@ def det():
     f = request.files['img']
     imb = BytesIO(f.read())
     img = Image.open(imb)
-    input_imgs = transforms(Image.open(imb)).cuda()
+    input_imgs = transforms(img).cuda()
 
     with torch.no_grad():
         detections = model(input_imgs[None])
