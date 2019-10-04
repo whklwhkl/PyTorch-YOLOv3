@@ -11,7 +11,7 @@ from utils.utils import build_targets, to_cpu, non_max_suppression
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-
+# todo : implement https://arxiv.org/abs/1910.01271
 
 def create_modules(module_defs):
     """
