@@ -87,7 +87,7 @@ class Upsample(nn.Module):
     """ nn.Upsample is deprecated """
 
     def __init__(self, scale_factor, mode="nearest"):
-        super(Upsample, self).__init__()
+        super().__init__()
         self.scale_factor = scale_factor
         self.mode = mode
 
@@ -107,13 +107,13 @@ class YOLOLayer(nn.Module):
     """Detection layer"""
 
     def __init__(self, anchors, num_classes, img_dim=416):
-        super(YOLOLayer, self).__init__()
+        super().__init__()
         self.anchors = anchors
         self.num_anchors = len(anchors)
         self.num_classes = num_classes
         self.ignore_thres = 0.5
         self.mse_loss = nn.MSELoss()
-        self.bce_loss = nn.BCELoss()
+        self.bce_loss = nn.BCEWithLogitsLoss()
         self.obj_scale = 1
         self.noobj_scale = 100
         self.metrics = {}
@@ -154,8 +154,8 @@ class YOLOLayer(nn.Module):
         y = torch.sigmoid(prediction[..., 1])  # Center y
         w = prediction[..., 2]  # Width
         h = prediction[..., 3]  # Height
-        pred_conf = torch.sigmoid(prediction[..., 4])  # Conf
-        pred_cls = torch.sigmoid(prediction[..., 5:])  # Cls pred.
+        pred_conf = prediction[..., 4]  # Conf
+        pred_cls = prediction[..., 5:]  # Cls pred.
 
         # If grid size does not match current we compute new offsets
         if grid_size != self.grid_size:
@@ -201,9 +201,9 @@ class YOLOLayer(nn.Module):
 
             # Metrics
             cls_acc = 100 * class_mask[obj_mask].mean()
-            conf_obj = pred_conf[obj_mask].mean()
-            conf_noobj = pred_conf[noobj_mask].mean()
-            conf50 = (pred_conf > 0.5).float()
+            conf_obj = pred_conf[obj_mask].sigmoid().mean()
+            conf_noobj = pred_conf[noobj_mask].sigmoid().mean()
+            conf50 = (pred_conf > 0).float()
             iou50 = (iou_scores > 0.5).float()
             iou75 = (iou_scores > 0.75).float()
             detected_mask = conf50 * class_mask * tconf

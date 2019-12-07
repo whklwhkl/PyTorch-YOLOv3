@@ -73,6 +73,7 @@ class ListDataset(Dataset):
         self.min_size = self.img_size - 3 * 32
         self.max_size = self.img_size + 3 * 32
         self.batch_count = 0
+        self.transform = transforms.ToTensor()
 
     def __getitem__(self, index):
 
@@ -83,7 +84,8 @@ class ListDataset(Dataset):
         img_path = self.img_files[index % len(self.img_files)].rstrip()
 
         # Extract image as PyTorch tensor
-        img = transforms.ToTensor()(Image.open(img_path).convert('RGB'))
+        img = Image.open(img_path)
+        img = self.transform(img.convert('RGB'))
 
         # Handle images with less than three channels
         if len(img.shape) != 3:

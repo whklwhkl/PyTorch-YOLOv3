@@ -21,6 +21,7 @@ from torchvision import datasets
 from torchvision import transforms
 from torch.autograd import Variable
 import torch.optim as optim
+from apex import amp
 
 
 if __name__ == "__main__":
@@ -76,7 +77,8 @@ if __name__ == "__main__":
     )
 
     optimizer = torch.optim.Adam(model.parameters())
-    WARMUP = 10 # epochs
+    model, optimizer = amp.initialize(model, optimizer, opt_level="O1")  # O2 has half() problems
+    WARMUP = 1 # epochs
     lr_scheduler = lr_warmup = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda x: x/len(dataloader)/WARMUP)
     lr_main = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, (opt.epochs - WARMUP) * len(dataloader))
 
