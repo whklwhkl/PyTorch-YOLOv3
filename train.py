@@ -22,6 +22,7 @@ from torchvision import transforms
 from torch.autograd import Variable
 import torch.optim as optim
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
@@ -75,6 +76,9 @@ if __name__ == "__main__":
     )
 
     optimizer = torch.optim.Adam(model.parameters())
+    WARMUP = 10 # epochs
+    lr_scheduler = lr_warmup = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda x: x/len(dataloader)/WARMUP)
+    lr_main = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, (opt.epochs - WARMUP) * len(dataloader))
 
     metrics = [
         "grid_size",
@@ -99,11 +103,16 @@ if __name__ == "__main__":
         for batch_i, (_, imgs, targets) in enumerate(dataloader):
             batches_done = len(dataloader) * epoch + batch_i
 
-            imgs = Variable(imgs.to(device))
-            targets = Variable(targets.to(device), requires_grad=False)
+            imgs = imgs.to(device)
+            targets = targets.to(device)
 
             loss, outputs = model(imgs, targets)
             loss.backward()
+
+            if epoch < WARMUP:
+                lr_warmup.step()
+            else:
+                lr_main.step()
 
             if batches_done % opt.gradient_accumulations:
                 # Accumulates gradient before each step
@@ -175,4 +184,4 @@ if __name__ == "__main__":
             print(f"---- mAP {AP.mean()}")
 
         if epoch % opt.checkpoint_interval == 0:
-            torch.save(model.state_dict(), f"checkpoints/yolov3_ckpt_%d.pth" % epoch)
+            torch.save(model.state_dict(), f"checkpoints/yolov3_ckpt_{epoch}.pth")
